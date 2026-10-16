@@ -78,6 +78,8 @@ def make_type_schema(*typenames, hasdefault=None):
                     schema["anyOf"] = members
                     typename = "types.UnionType"
                 else:
+                    # Nothing a form can supply: hidden, like an opaque type with a default.
+                    schema["hide"] = True
                     typename = repr(typename)
             else:
                 if hasattr(typename, "json_schema"):

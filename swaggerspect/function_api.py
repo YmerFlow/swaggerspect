@@ -1,8 +1,6 @@
 import inspect
 import numpydoc.docscrape
 import ast
-import functools
-import operator
 import typing
 import types
 import importlib.metadata
@@ -12,56 +10,28 @@ from . import type_schema
 from . import value_schema
 from . import schema_utils
 
-def split_union(text):
-    """The members of a union written as text, splitting only at the top level."""
-    parts, depth, current = [], 0, ""
-    for char in text:
-        if char in "[(":
-            depth += 1
-        elif char in "])":
-            depth -= 1
-        if char == "|" and depth == 0:
-            parts.append(current.strip())
-            current = ""
-        else:
-            current += char
-    parts.append(current.strip())
-    return parts
-
-def resolve_annotation(annotation, namespace):
-    """The type a text annotation names.
-
-    ``from __future__ import annotations`` leaves every annotation as text, and
-    text such as ``"float | None"`` matches no type name. It is evaluated in the
-    namespace of the module that defines the function, as typing.get_type_hints
-    does. A union member that cannot be resolved there is dropped: it names a
-    type that module never imported, which a JSON value cannot be anyway.
-    """
-    if not isinstance(annotation, str):
-        return annotation
-    try:
-        return eval(annotation, dict(namespace))
-    except (NameError, AttributeError, TypeError, SyntaxError):
-        pass
-    members = []
-    for part in split_union(annotation):
-        try:
-            members.append(eval(part, dict(namespace)))
-        except (NameError, AttributeError, TypeError, SyntaxError):
-            continue
-    if not members:
-        return inspect.Parameter.empty
-    return functools.reduce(operator.or_, members)
+def check_annotations(fn):
+    """Annotations must be types. ``from __future__ import annotations`` turns
+    them into text, which no field can be built from."""
+    signature = inspect.signature(fn)
+    annotations = {name: p.annotation for name, p in signature.parameters.items()}
+    annotations["return"] = signature.return_annotation
+    for name, annotation in annotations.items():
+        if isinstance(annotation, str):
+            raise TypeError(
+                f"{fn.__module__}.{fn.__qualname__}: {name!r} is annotated with "
+                f"the text {annotation!r}, not a type. Remove "
+                f"`from __future__ import annotations` from {fn.__module__}.")
 
 def get_function_api_parameters_inspect(fn):
-    namespace = getattr(fn, "__globals__", {})
+    check_annotations(fn)
     return schema_utils.remove_empty(
         {
             "propertyOrder": list(inspect.signature(fn).parameters.keys()),
             "properties": {
                 k: schema_utils.merge(
                     type_schema.make_type_schema(
-                        resolve_annotation(v.annotation, namespace),
+                        v.annotation,
                         type_schema.typeof(v.default),
                         hasdefault = v.default),
                     value_schema.make_value_schema(v.default))

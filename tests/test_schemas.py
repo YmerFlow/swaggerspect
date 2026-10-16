@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 import importlib.metadata
+
+import pytest
 
 import swaggerspect
 
@@ -41,13 +41,15 @@ def test_class_attributes_keep_their_declaration_order():
     assert list(properties(api)) == ["zeta", "alpha", "mid", "beta"]
 
 
-# ── Text annotations ─────────────────────────────────────────────────────────
-# This module uses `from __future__ import annotations`, so every annotation
-# below reaches swaggerspect as text.
+# ── Annotations ──────────────────────────────────────────────────────────────
+
+class Opaque:
+    """A type nobody can type into a form."""
+
 
 def annotated(dataset, optional: float | None = None, count: int = 0,
               names: list[str] | None = None, per_channel: float | dict[str, float] = 1.0,
-              path: str | NotImportedHere = "x"):  # noqa: F821, the point of the test
+              path: str | Opaque = "x"):
     pass
 
 
@@ -58,7 +60,7 @@ def test_optional_is_its_type_not_an_object():
     assert "anyOf" not in field
 
 
-def test_text_annotations_resolve_to_their_types():
+def test_generic_annotations_become_typed_fields():
     fields = properties(swaggerspect.get_api(annotated))
     assert fields["count"]["type"] == "integer" and fields["count"]["default"] == 0
     assert fields["names"]["type"] == "array"
@@ -80,12 +82,22 @@ def test_an_unannotated_parameter_without_default_is_left_out():
     assert "dataset" not in properties(swaggerspect.get_api(annotated))
 
 
-def only_unknown(thing: NotImportedHere | None = None):  # noqa: F821
+def only_opaque(thing: Opaque | None = None):
     pass
 
 
 def test_a_union_of_nothing_a_form_can_supply_is_left_out():
-    assert "thing" not in properties(swaggerspect.get_api(only_unknown))
+    assert "thing" not in properties(swaggerspect.get_api(only_opaque))
+
+
+def text_annotated(threshold: "float" = 1.0):
+    pass
+
+
+def test_a_text_annotation_is_an_error():
+    """`from __future__ import annotations` turns every annotation into text."""
+    with pytest.raises(TypeError, match="from __future__ import annotations"):
+        swaggerspect.get_api(text_annotated)
 
 
 # ── Required ─────────────────────────────────────────────────────────────────
