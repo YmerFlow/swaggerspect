@@ -70,31 +70,10 @@ def get_function_api_parameters_inspect(fn):
         }
     )
 
-def sphinx_parameters(docs):
-    """``:param name: text`` entries, for docstrings written in Sphinx style."""
-    described, current = {}, None
-    for line in docs.splitlines():
-        stripped = line.strip()
-        if stripped.startswith(":param "):
-            name, _, text = stripped[len(":param "):].partition(":")
-            current = name.split()[-1]  # ":param int name:" names its type first
-            described[current] = text.strip()
-        elif current and stripped and not stripped.startswith(":"):
-            described[current] += " " + stripped
-        else:
-            current = None
-    return described
-
 def get_function_api_parameters_comments(fn):
     docs = inspect.getdoc(fn)
     if docs is None: return []
     docast = numpydoc.docscrape.NumpyDocString(docs)
-
-    if not docast["Parameters"]:
-        described = sphinx_parameters(docs)
-        return {
-            "propertyOrder": list(described),
-            "properties": {name: {"description": text} for name, text in described.items()}}
 
     return {
          # propertyOrder will never be used, as merge() will prefer the one from inspect, included for completeness
@@ -104,17 +83,6 @@ def get_function_api_parameters_comments(fn):
                 {"description": "\n".join(p.desc)},
                 type_schema.make_type_schema(p.type))
             for p in docast["Parameters"]}}
-
-def description_lines(lines):
-    """Docstring prose up to the first Sphinx field (``:param``, ``:returns``...)."""
-    out = []
-    for line in lines:
-        if line.strip().startswith(":"):
-            break
-        out.append(line)
-    while out and not out[-1].strip():
-        out.pop()
-    return out
 
 def get_function_api(fn, name = None):
     args = schema_utils.remove_hidden(
@@ -139,7 +107,7 @@ def get_function_api(fn, name = None):
     description = type_schema.get_type_name(fn)
     if docs is not None:
         docast = numpydoc.docscrape.NumpyDocString(docs)
-        description = "\n".join(description_lines(docast["Summary"] + docast["Extended Summary"]))
+        description = "\n".join(docast["Summary"] + docast["Extended Summary"])
 
     returntype = inspect.signature(fn).return_annotation
 

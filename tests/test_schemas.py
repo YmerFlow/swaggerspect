@@ -122,32 +122,6 @@ def test_nothing_required_means_no_required_list():
 
 # ── Docstrings ───────────────────────────────────────────────────────────────
 
-def sphinx_style(dataset, start: int = 0, spread: int = 0):
-    """Disable what needs disabling.
-
-    A second paragraph of prose.
-
-    :param start: Where evaluation begins,
-        0-based.
-    :param spread: How far to spread.
-
-    Returns ``(dataset, report)``.
-    """
-
-
-def test_sphinx_param_entries_become_descriptions():
-    fields = properties(swaggerspect.get_api(sphinx_style))
-    assert fields["start"]["description"] == "Where evaluation begins, 0-based."
-    assert fields["spread"]["description"] == "How far to spread."
-
-
-def test_the_description_stops_at_the_field_list():
-    description = swaggerspect.get_api(sphinx_style)["description"]
-    assert description.startswith("Disable what needs disabling.")
-    assert "A second paragraph of prose." in description
-    assert ":param" not in description and "Returns" not in description
-
-
 def numpy_style(x: int = 1):
     """Summary.
 
@@ -158,7 +132,7 @@ def numpy_style(x: int = 1):
     """
 
 
-def test_numpydoc_parameters_are_still_read():
+def test_numpydoc_parameters_are_read():
     assert properties(swaggerspect.get_api(numpy_style))["x"]["description"] == "The x."
 
 
