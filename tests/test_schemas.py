@@ -88,6 +88,38 @@ def test_a_union_of_nothing_a_form_can_supply_is_left_out():
     assert "thing" not in properties(swaggerspect.get_api(only_unknown))
 
 
+# ── Required ─────────────────────────────────────────────────────────────────
+
+class Survey:
+    """A data object: something the caller passes, not something typed into a form."""
+
+
+def needs_thresholds(dataset, good_max: float, marginal_max: float, unit: str = "m", **extra):
+    pass
+
+
+def takes_an_object(data: Survey, window: int):
+    pass
+
+
+def arguments(api):
+    return next(iter(api["properties"].values()))
+
+
+def test_a_parameter_without_a_default_is_required():
+    assert arguments(swaggerspect.get_api(needs_thresholds))["required"] == [
+        "good_max", "marginal_max"]
+
+
+def test_a_data_object_the_caller_passes_is_not_required():
+    """It has no JSON form, so requiring it would make the form unsubmittable."""
+    assert arguments(swaggerspect.get_api(takes_an_object))["required"] == ["window"]
+
+
+def test_nothing_required_means_no_required_list():
+    assert "required" not in arguments(swaggerspect.get_api(written_in_this_order))
+
+
 # ── Docstrings ───────────────────────────────────────────────────────────────
 
 def sphinx_style(dataset, start: int = 0, spread: int = 0):

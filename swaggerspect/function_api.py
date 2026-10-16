@@ -124,6 +124,17 @@ def get_function_api(fn, name = None):
             schema_utils.merge(get_function_api_parameters_inspect(fn),
                                get_function_api_parameters_comments(fn))))
 
+    # A parameter with no default has to be given, so a form should catch the
+    # omission rather than the call. Only fields a form can supply count: an
+    # argument the caller passes itself, such as a data object, has no JSON form.
+    required = [name for name, p in inspect.signature(fn).parameters.items()
+                if p.default is inspect.Parameter.empty
+                and p.kind not in (p.VAR_POSITIONAL, p.VAR_KEYWORD)
+                and name in args.get("properties", {})
+                and type_schema.has_json_form(args["properties"][name])]
+    if required:
+        args["required"] = required
+
     docs = inspect.getdoc(fn)
     description = type_schema.get_type_name(fn)
     if docs is not None:
