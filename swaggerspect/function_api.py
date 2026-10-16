@@ -10,21 +10,7 @@ from . import type_schema
 from . import value_schema
 from . import schema_utils
 
-def check_annotations(fn):
-    """Annotations must be types. ``from __future__ import annotations`` turns
-    them into text, which no field can be built from."""
-    signature = inspect.signature(fn)
-    annotations = {name: p.annotation for name, p in signature.parameters.items()}
-    annotations["return"] = signature.return_annotation
-    for name, annotation in annotations.items():
-        if isinstance(annotation, str):
-            raise TypeError(
-                f"{fn.__module__}.{fn.__qualname__}: {name!r} is annotated with "
-                f"the text {annotation!r}, not a type. Remove "
-                f"`from __future__ import annotations` from {fn.__module__}.")
-
 def get_function_api_parameters_inspect(fn):
-    check_annotations(fn)
     return schema_utils.remove_empty(
         {
             "propertyOrder": list(inspect.signature(fn).parameters.keys()),

@@ -66,21 +66,15 @@ def make_type_schema(*typenames, hasdefault=None):
                 typename = get_type_name(type(schema["enum"][0]))
             elif isinstance(typename, (types.UnionType, typing._UnionGenericAlias)):
                 # None in a union only says the parameter is optional, which
-                # leaving it out of "required" already says. A member with no
-                # JSON form, a class nobody can type into a form, is dropped.
+                # leaving it out of "required" already says.
                 members = [make_type_schema(arg) for arg in typing.get_args(typename)
                            if arg is not type(None)]
-                members = [member for member in members if has_json_form(member)]
                 if len(members) == 1:
                     schema.update(members[0])
                     typename = members[0]["x-python-type"]
-                elif members:
+                else:
                     schema["anyOf"] = members
                     typename = "types.UnionType"
-                else:
-                    # Nothing a form can supply: hidden, like an opaque type with a default.
-                    schema["hide"] = True
-                    typename = repr(typename)
             else:
                 if hasattr(typename, "json_schema"):
                     metadatas = [typename]

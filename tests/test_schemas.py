@@ -1,7 +1,5 @@
 import importlib.metadata
 
-import pytest
-
 import swaggerspect
 
 
@@ -43,13 +41,8 @@ def test_class_attributes_keep_their_declaration_order():
 
 # ── Annotations ──────────────────────────────────────────────────────────────
 
-class Opaque:
-    """A type nobody can type into a form."""
-
-
 def annotated(dataset, optional: float | None = None, count: int = 0,
-              names: list[str] | None = None, per_channel: float | dict[str, float] = 1.0,
-              path: str | Opaque = "x"):
+              names: list[str] | None = None, per_channel: float | dict[str, float] = 1.0):
     pass
 
 
@@ -73,31 +66,8 @@ def test_a_scalar_or_mapping_offers_both():
     assert field["anyOf"][1]["additionalProperties"]["type"] == "number"
 
 
-def test_a_member_with_no_json_form_is_dropped():
-    """A form can only ever supply the string."""
-    assert properties(swaggerspect.get_api(annotated))["path"]["type"] == "string"
-
-
 def test_an_unannotated_parameter_without_default_is_left_out():
     assert "dataset" not in properties(swaggerspect.get_api(annotated))
-
-
-def only_opaque(thing: Opaque | None = None):
-    pass
-
-
-def test_a_union_of_nothing_a_form_can_supply_is_left_out():
-    assert "thing" not in properties(swaggerspect.get_api(only_opaque))
-
-
-def text_annotated(threshold: "float" = 1.0):
-    pass
-
-
-def test_a_text_annotation_is_an_error():
-    """`from __future__ import annotations` turns every annotation into text."""
-    with pytest.raises(TypeError, match="from __future__ import annotations"):
-        swaggerspect.get_api(text_annotated)
 
 
 # ── Required ─────────────────────────────────────────────────────────────────
