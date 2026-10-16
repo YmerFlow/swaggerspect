@@ -28,6 +28,13 @@ typemap = {
     'pydantic_core._pydantic_core.Url': {"type": "string", "format": "url"} # pydantic_core <= 2.23.3 
 }
 
+def has_json_form(schema):
+    """False for a type with no JSON equivalent, which falls back to a bare object."""
+    return not (schema.get("type") == "object"
+                and schema.get("x-python-type") not in ("builtins.dict", "dict", "typing.Any")
+                and "properties" not in schema
+                and "additionalProperties" not in schema)
+
 def typeof(v):
     if v is None: return None
     if v is inspect._empty: return None
@@ -58,8 +65,20 @@ def make_type_schema(*typenames, hasdefault=None):
                 schema["enum"] = list(typing.get_args(typename))
                 typename = get_type_name(type(schema["enum"][0]))
             elif isinstance(typename, (types.UnionType, typing._UnionGenericAlias)):
-                schema["anyOf"] = [make_type_schema(arg) for arg in typing.get_args(typename)]
-                typename = "types.UnionType"
+                # None in a union only says the parameter is optional, which
+                # leaving it out of "required" already says. A member with no
+                # JSON form, a class nobody can type into a form, is dropped.
+                members = [make_type_schema(arg) for arg in typing.get_args(typename)
+                           if arg is not type(None)]
+                members = [member for member in members if has_json_form(member)]
+                if len(members) == 1:
+                    schema.update(members[0])
+                    typename = members[0]["x-python-type"]
+                elif members:
+                    schema["anyOf"] = members
+                    typename = "types.UnionType"
+                else:
+                    typename = repr(typename)
             else:
                 if hasattr(typename, "json_schema"):
                     metadatas = [typename]
@@ -80,7 +99,7 @@ def make_type_schema(*typenames, hasdefault=None):
             schema["items"] = make_type_schema(args[0])
         elif schema.get("type") == "object" and args:
             schema["propertyNames"] = make_type_schema(args[0])
-            schema["patternProperties"] = make_type_schema(args[1])
+            schema["additionalProperties"] = make_type_schema(args[1])
 
         if metadatas:
             for metadata in metadatas:

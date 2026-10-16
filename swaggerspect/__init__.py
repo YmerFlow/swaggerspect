@@ -31,8 +31,15 @@ def get_apis_dict(objs, local_names = False):
 
 def get_apis_entrypoints(group):
     entrypoints = importlib.metadata.entry_points()
-    if group not in entrypoints: return {}
-    entrypoints = entrypoints[group]
+    if hasattr(entrypoints, "select"):
+        # Python 3.10+. The dict interface below was removed in 3.12, where
+        # it silently found no group at all.
+        entrypoints = entrypoints.select(group=group)
+    elif group in entrypoints:
+        entrypoints = entrypoints[group]
+    else:
+        return {}
+    if not entrypoints: return {}
     docs = get_apis_dict({entry.name: entry.load()
                           for entry in entrypoints}, local_names=True)
     docs["title"] = group

@@ -1,0 +1,148 @@
+from __future__ import annotations
+
+import importlib.metadata
+
+import swaggerspect
+
+
+def properties(api):
+    """The parameter schemas of one function or class API (none: no key)."""
+    return next(iter(api["properties"].values())).get("properties", {})
+
+
+# ── Order ────────────────────────────────────────────────────────────────────
+
+def written_in_this_order(zeta: int = 1, alpha: str = "a", mid: float = 0.5, beta: bool = False):
+    pass
+
+
+def test_parameters_keep_their_signature_order():
+    """A form lists fields in the order its schema does, so a merge through a
+    set showed them in a different order on every run."""
+    api = swaggerspect.get_api(written_in_this_order)
+    assert list(properties(api)) == ["zeta", "alpha", "mid", "beta"]
+
+
+class Base:
+    zeta = 1
+    "Declared first."
+    alpha = "a"
+
+
+class Child(Base):
+    mid = 0.5
+    beta = False
+    "Documented, unlike mid."
+
+
+def test_class_attributes_keep_their_declaration_order():
+    """Bases first, then the class's own, as written; not alphabetical."""
+    api = swaggerspect.get_api(Child)
+    assert list(properties(api)) == ["zeta", "alpha", "mid", "beta"]
+
+
+# ── Text annotations ─────────────────────────────────────────────────────────
+# This module uses `from __future__ import annotations`, so every annotation
+# below reaches swaggerspect as text.
+
+def annotated(dataset, optional: float | None = None, count: int = 0,
+              names: list[str] | None = None, per_channel: float | dict[str, float] = 1.0,
+              path: str | NotImportedHere = "x"):  # noqa: F821, the point of the test
+    pass
+
+
+def test_optional_is_its_type_not_an_object():
+    """None in a union only says the parameter may be left out."""
+    field = properties(swaggerspect.get_api(annotated))["optional"]
+    assert field["type"] == "number"
+    assert "anyOf" not in field
+
+
+def test_text_annotations_resolve_to_their_types():
+    fields = properties(swaggerspect.get_api(annotated))
+    assert fields["count"]["type"] == "integer" and fields["count"]["default"] == 0
+    assert fields["names"]["type"] == "array"
+    assert fields["names"]["items"]["type"] == "string"
+
+
+def test_a_scalar_or_mapping_offers_both():
+    field = properties(swaggerspect.get_api(annotated))["per_channel"]
+    assert [member["type"] for member in field["anyOf"]] == ["number", "object"]
+    assert field["anyOf"][1]["additionalProperties"]["type"] == "number"
+
+
+def test_a_member_with_no_json_form_is_dropped():
+    """A form can only ever supply the string."""
+    assert properties(swaggerspect.get_api(annotated))["path"]["type"] == "string"
+
+
+def test_an_unannotated_parameter_without_default_is_left_out():
+    assert "dataset" not in properties(swaggerspect.get_api(annotated))
+
+
+def only_unknown(thing: NotImportedHere | None = None):  # noqa: F821
+    pass
+
+
+def test_a_union_of_nothing_a_form_can_supply_is_left_out():
+    assert "thing" not in properties(swaggerspect.get_api(only_unknown))
+
+
+# ── Docstrings ───────────────────────────────────────────────────────────────
+
+def sphinx_style(dataset, start: int = 0, spread: int = 0):
+    """Disable what needs disabling.
+
+    A second paragraph of prose.
+
+    :param start: Where evaluation begins,
+        0-based.
+    :param spread: How far to spread.
+
+    Returns ``(dataset, report)``.
+    """
+
+
+def test_sphinx_param_entries_become_descriptions():
+    fields = properties(swaggerspect.get_api(sphinx_style))
+    assert fields["start"]["description"] == "Where evaluation begins, 0-based."
+    assert fields["spread"]["description"] == "How far to spread."
+
+
+def test_the_description_stops_at_the_field_list():
+    description = swaggerspect.get_api(sphinx_style)["description"]
+    assert description.startswith("Disable what needs disabling.")
+    assert "A second paragraph of prose." in description
+    assert ":param" not in description and "Returns" not in description
+
+
+def numpy_style(x: int = 1):
+    """Summary.
+
+    Parameters
+    ----------
+    x : int
+        The x.
+    """
+
+
+def test_numpydoc_parameters_are_still_read():
+    assert properties(swaggerspect.get_api(numpy_style))["x"]["description"] == "The x."
+
+
+# ── Entry points ─────────────────────────────────────────────────────────────
+
+def test_an_entry_point_group_is_found(monkeypatch):
+    """The dict interface to entry_points() is gone in Python 3.12, where the
+    old lookup silently found nothing."""
+    point = importlib.metadata.EntryPoint(
+        name="written_in_this_order", value=f"{__name__}:written_in_this_order",
+        group="swaggerspect_tests.steps")
+    monkeypatch.setattr(importlib.metadata, "entry_points",
+                        lambda: importlib.metadata.EntryPoints([point]))
+    apis = swaggerspect.get_apis("swaggerspect_tests.steps")
+    assert [api["title"] for api in apis["anyOf"]] == ["written_in_this_order"]
+
+
+def test_an_unknown_group_gives_nothing():
+    assert swaggerspect.get_apis_entrypoints("swaggerspect.no-such-group") == {}
