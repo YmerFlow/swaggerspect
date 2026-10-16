@@ -9,7 +9,7 @@ import sys
 from . import type_schema
 from . import value_schema
 from . import schema_utils
-    
+
 def get_function_api_parameters_inspect(fn):
     return schema_utils.remove_empty(
         {
@@ -30,7 +30,7 @@ def get_function_api_parameters_comments(fn):
     docs = inspect.getdoc(fn)
     if docs is None: return []
     docast = numpydoc.docscrape.NumpyDocString(docs)
-    
+
     return {
          # propertyOrder will never be used, as merge() will prefer the one from inspect, included for completeness
         "propertyOrder": [p.name for p in docast["Parameters"]],
@@ -47,6 +47,17 @@ def get_function_api(fn, name = None):
              "additionalProperties": False},
             schema_utils.merge(get_function_api_parameters_inspect(fn),
                                get_function_api_parameters_comments(fn))))
+
+    # A parameter with no default has to be given, so a form should catch the
+    # omission rather than the call. Only fields a form can supply count: an
+    # argument the caller passes itself, such as a data object, has no JSON form.
+    required = [name for name, p in inspect.signature(fn).parameters.items()
+                if p.default is inspect.Parameter.empty
+                and p.kind not in (p.VAR_POSITIONAL, p.VAR_KEYWORD)
+                and name in args.get("properties", {})
+                and type_schema.has_json_form(args["properties"][name])]
+    if required:
+        args["required"] = required
 
     docs = inspect.getdoc(fn)
     description = type_schema.get_type_name(fn)

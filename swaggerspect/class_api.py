@@ -6,6 +6,7 @@ import types
 import importlib.metadata
 import copy
 import sys
+import textwrap
 import collections
 from . import type_schema
 from . import value_schema
@@ -36,6 +37,28 @@ def _get_class_property_comments(cls):
                 propdocs[s.target.id] = ss.value.value
 
     return propdocs
+
+def _declaration_order(cls):
+    """Every attribute the class body assigns, in order, bases first."""
+    order = []
+    for base in cls.__bases__:
+        if base is not object:
+            order += [n for n in _declaration_order(base) if n not in order]
+    try:
+        src = inspect.getsource(cls)
+    except (TypeError, OSError):
+        return order
+    for statement in ast.parse(textwrap.dedent(src)).body[0].body:
+        if isinstance(statement, ast.Assign):
+            targets = statement.targets
+        elif isinstance(statement, ast.AnnAssign):
+            targets = [statement.target]
+        else:
+            continue
+        for target in targets:
+            if isinstance(target, ast.Name) and target.id not in order:
+                order.append(target.id)
+    return order
 
 def get_class_api_parameters_comments(cls):
     propdocs = _get_class_property_comments(cls)
@@ -81,6 +104,13 @@ def get_class_properties_api(cls, name=None):
             schema_utils.merge(get_class_api_parameters_typing(cls),
                                schema_utils.merge(get_class_api_parameters_inspect(cls),
                                                   get_class_api_parameters_comments(cls)))))
+    # In the order the class body declares them, bases first, rather than
+    # inspect.getmembers' alphabetical order.
+    declared = [n for n in _declaration_order(cls) if n in args.get("properties", {})]
+    if "properties" in args:
+        args["properties"] = {n: args["properties"][n]
+                              for n in declared + [n for n in args["properties"] if n not in declared]}
+        args["propertyOrder"] = list(args["properties"])
     
     operation_id = type_schema.get_type_name(cls)
     description = inspect.getdoc(cls)

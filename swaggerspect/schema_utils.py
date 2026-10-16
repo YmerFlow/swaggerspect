@@ -3,8 +3,10 @@ def merge(a, b):
     if b is None: return a
     if type(a) is not type(b): return a
     if isinstance(a, dict):
-        return {k: merge(a.get(k), b.get(k))
-                for k in set(a.keys()).union(b.keys())}
+        # a's keys first, then b's new ones, in the order they were written:
+        # a form lists fields in the order its schema does.
+        keys = list(a) + [k for k in b if k not in a]
+        return {k: merge(a.get(k), b.get(k)) for k in keys}
     return a
 
 def remove_empty(obj):
