@@ -118,6 +118,32 @@ def test_numpydoc_parameters_are_read():
     assert properties(swaggerspect.get_api(numpy_style))["x"]["description"] == "The x."
 
 
+def union_documented(threshold: float | dict[str, float] | None = None, count=None):
+    """Summary.
+
+    Parameters
+    ----------
+    threshold : float | dict | None
+        One value, or one per channel.
+    count : int, optional
+        How many.
+    """
+
+
+def test_an_unknown_docstring_type_does_not_override_the_annotation():
+    """A union has no top-level type, so the docstring's must not fill one in."""
+    field = properties(swaggerspect.get_api(union_documented))["threshold"]
+    assert [member["type"] for member in field["anyOf"]] == ["number", "object"]
+    assert "type" not in field
+    assert field["description"] == "One value, or one per channel."
+
+
+def test_a_known_docstring_type_is_read_with_its_optional_suffix():
+    """With no annotation and a None default, the docstring is the only source."""
+    field = properties(swaggerspect.get_api(union_documented))["count"]
+    assert field["type"] == "integer" and field["description"] == "How many."
+
+
 # ── Entry points ─────────────────────────────────────────────────────────────
 
 def test_an_entry_point_group_is_found(monkeypatch):

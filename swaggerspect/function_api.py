@@ -26,6 +26,16 @@ def get_function_api_parameters_inspect(fn):
         }
     )
 
+def docstring_type_schema(text):
+    """A field type from a numpydoc type string, only when it names a type in
+    the typemap ("float, optional" counts as "float"). Anything else, such as a
+    union or a class name, adds no type: the signature is where types come from,
+    and an unknown string here would override a union from the annotation."""
+    name = text.split(",")[0].strip()
+    if name in type_schema.typemap:
+        return type_schema.make_type_schema(name)
+    return {}
+
 def get_function_api_parameters_comments(fn):
     docs = inspect.getdoc(fn)
     if docs is None: return []
@@ -37,7 +47,7 @@ def get_function_api_parameters_comments(fn):
         "properties": {
             p.name: schema_utils.merge(
                 {"description": "\n".join(p.desc)},
-                type_schema.make_type_schema(p.type))
+                docstring_type_schema(p.type))
             for p in docast["Parameters"]}}
 
 def get_function_api(fn, name = None):
