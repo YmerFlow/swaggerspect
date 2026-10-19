@@ -118,27 +118,32 @@ def test_numpydoc_parameters_are_read():
     assert properties(swaggerspect.get_api(numpy_style))["x"]["description"] == "The x."
 
 
-def union_documented(threshold: float | dict[str, float] | None = None, count=None):
+def union_documented(threshold: float | dict[str, float] | None = None,
+                     limit: float | dict[str, float] = 1.0, count=None):
     """Summary.
 
     Parameters
     ----------
     threshold : float | dict | None
         One value, or one per channel.
-    count : int, optional
+    limit : dict
+        A type swaggerspect knows, which still must not be used.
+    count : int
         How many.
     """
 
 
-def test_an_unknown_docstring_type_does_not_override_the_annotation():
+def test_an_annotated_parameter_ignores_its_docstring_type():
     """A union has no top-level type, so the docstring's must not fill one in."""
+    for name in ("threshold", "limit"):
+        field = properties(swaggerspect.get_api(union_documented))[name]
+        assert [member["type"] for member in field["anyOf"]] == ["number", "object"]
+        assert "type" not in field
     field = properties(swaggerspect.get_api(union_documented))["threshold"]
-    assert [member["type"] for member in field["anyOf"]] == ["number", "object"]
-    assert "type" not in field
     assert field["description"] == "One value, or one per channel."
 
 
-def test_a_known_docstring_type_is_read_with_its_optional_suffix():
+def test_an_unannotated_parameter_takes_its_docstring_type():
     """With no annotation and a None default, the docstring is the only source."""
     field = properties(swaggerspect.get_api(union_documented))["count"]
     assert field["type"] == "integer" and field["description"] == "How many."
