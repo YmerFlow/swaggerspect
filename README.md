@@ -40,6 +40,5 @@ print(yaml.dump(swaggerspect.swagger_to_json_schema(swaggerspect.get_apis("my.en
 * For types that can not be modified, the same can also be achieved
   using typing.Annotated with an annotation that has a property
   `json_schema` containing the literal JSON Schema fragment.
-* Parameters of a class can be grouped into dictionaries in the
-  schema, by sharing a common prefix (separated by `__`), and seting
-  `group_parameters=True` in the call to `get_apis`.
+* Parameters of a class can be grouped into dictionaries in the schema, by sharing a common prefix (separated by `__`), and setting `group_parameters=True` in the call to `get_apis`.
+* A group's own schema keys, such as an `x-format` that selects a widget for the whole group, or its description, are declared by a parameter named like the group, annotated and with no value: `regularization: typing.Annotated[typing.Any, {"json_schema": {"x-format": "length-scale"}}]` followed by a docstring. The declaration may come before or after the group's members, and works for nested groups (`a__b`). The group keeps its own `type`, `properties` and `x-python-type`, so `GroupMergingValidator` still flattens it back into `a__b` parameters. A class gains no attribute from the declaration.
