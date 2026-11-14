@@ -1,6 +1,10 @@
 import importlib.metadata
+import typing
+
+import pytest
 
 import swaggerspect
+import swaggerspect.validate
 
 
 def properties(api):
@@ -116,6 +120,83 @@ def numpy_style(x: int = 1):
 
 def test_numpydoc_parameters_are_read():
     assert properties(swaggerspect.get_api(numpy_style))["x"]["description"] == "The x."
+
+
+# ── Groups ───────────────────────────────────────────────────────────────────
+
+LENGTH_SCALE = {"json_schema": {"x-format": "length-scale"}}
+
+
+class Undeclared:
+    regularization__alpha_s = 1e-4
+    regularization__L_r = 500.
+    other = 1
+
+
+class DeclaredFirst:
+    regularization: typing.Annotated[typing.Any, LENGTH_SCALE]
+    "Smallness and smoothness weights."
+    regularization__alpha_s = 1e-4
+    regularization__L_r = 500.
+    other = 1
+
+
+class DeclaredAfter:
+    regularization__alpha_s = 1e-4
+    regularization__L_r = 500.
+    other = 1
+    regularization: typing.Annotated[typing.Any, LENGTH_SCALE]
+    "Smallness and smoothness weights."
+
+
+class DeclaredNested:
+    outer__inner: typing.Annotated[typing.Any, LENGTH_SCALE]
+    outer__inner__alpha_s = 1e-4
+    outer__other = 1
+
+
+def grouped(cls):
+    return properties(swaggerspect.group_apis_parameters({"anyOf": [swaggerspect.get_api(cls)]})["anyOf"][0])
+
+
+def test_parameters_sharing_a_prefix_form_a_group():
+    fields = grouped(Undeclared)
+    assert list(fields) == ["regularization", "other"]
+    group = fields["regularization"]
+    assert group["type"] == "object" and group["x-python-type"] is None
+    assert group["description"] == "regularization"
+    assert list(group["properties"]) == ["alpha_s", "L_r"]
+    assert group["properties"]["L_r"]["title"] == "L_r"
+
+
+@pytest.mark.parametrize("cls", [DeclaredFirst, DeclaredAfter])
+def test_a_parameter_named_like_a_group_declares_its_keys(cls):
+    """Before or after its members; the group stays a group the validator flattens."""
+    group = grouped(cls)["regularization"]
+    assert group["x-format"] == "length-scale"
+    assert group["description"] == "Smallness and smoothness weights."
+    assert group["type"] == "object" and group["x-python-type"] is None
+    assert list(group["properties"]) == ["alpha_s", "L_r"]
+
+
+def test_a_declaration_keeps_the_group_where_its_name_first_appears():
+    assert list(grouped(DeclaredFirst)) == ["regularization", "other"]
+    assert list(grouped(DeclaredAfter)) == ["regularization", "other"]
+
+
+def test_a_nested_group_can_be_declared():
+    outer = grouped(DeclaredNested)["outer"]
+    inner = outer["properties"]["inner"]
+    assert inner["x-format"] == "length-scale" and inner["x-python-type"] is None
+    assert list(inner["properties"]) == ["alpha_s"]
+    assert list(outer["properties"]) == ["inner", "other"]
+
+
+def test_a_declared_group_is_flattened_back_on_validation():
+    schema = {"type": "object", "properties": grouped(DeclaredFirst)}
+    data = {"regularization": {"alpha_s": 1e-3, "L_r": 200.}, "other": 2}
+    swaggerspect.validate.GroupMergingValidator(schema).validate(data)
+    assert data == {"other": 2, "regularization__alpha_s": 1e-3, "regularization__L_r": 200.}
 
 
 # ── Entry points ─────────────────────────────────────────────────────────────

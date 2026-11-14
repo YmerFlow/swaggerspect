@@ -78,38 +78,56 @@ def get_apis_class(cls):
     docs["description"] = inspect.getdoc(cls) or cls.__name__
     return docs
 
+# A group's own keys: built here, never taken from a declaration. An x-python-type
+# of None is what tells validate.GroupMergingValidator to flatten the group back.
+_GROUP_KEYS = ("type", "properties", "x-python-type")
+
+def _is_group(schema):
+    """Whether a schema is a group built by _group_parameters (the validator's own test)."""
+    return schema.get("x-python-type", True) is None
+
+def _declared(group, declaration):
+    """The group with the keys of a parameter declared under the group's own name added."""
+    return dict(group, **{k: v for k, v in declaration.items() if k not in _GROUP_KEYS})
+
+def _subgroup(parent, name):
+    """The group `name` in `parent`, built if missing, taking the keys of a declaration found there."""
+    existing = parent.get(name)
+    if existing is None or not _is_group(existing):
+        group = {"type": "object", "title": name, "description": name,
+                 "properties": {}, "x-python-type": None}
+        parent[name] = group if existing is None else _declared(group, existing)
+    return parent[name]
+
 def _group_parameters(parameters):
+    """Nest ``a__b`` parameters into group objects; see the README.
+
+    A parameter named like a group (``a``, or ``a__b`` for a nested group) declares
+    that group's own schema keys, such as ``x-format`` or a description, whether it
+    comes before or after the group's members. The group keeps its own ``type``,
+    ``properties`` and ``x-python-type``.
+
+    Parameters
+    ----------
+    parameters : dict
+        Parameter name to JSON schema, the names using ``__`` as a path separator.
+
+    Returns
+    -------
+    dict
+        Group or parameter name to JSON schema, in the order of first appearance.
+    """
     grouped_by_name = {}
     for name, schema in parameters.items():
-        if "__" not in name:
-            grouped_by_name[name] = schema
-        else:
-            schema = dict(schema)
-            path = name.split("__")
-            if path[0] not in grouped_by_name:
-                grouped_by_name[path[0]] = {
-                    "type": "object",
-                    "title": path[0],
-                    "description": path[0],
-                    "properties": {},
-                    "x-python-type": None
-                }
-            
-            g = grouped_by_name[path[0]]
-            for item in path[1:-1]:
-                if item not in g["properties"]:
-                    g["properties"][item] = {
-                        "type": "object",
-                        "title": item,
-                        "description": item,
-                        "properties": {},
-                        "x-python-type": None
-                    }
-                g = g["properties"][item]
-
-            p = dict(schema)
-            if "title" not in p: p["title"] = path[-1]
-            g["properties"][path[-1]] = p
+        *path, leaf = name.split("__")
+        parent = grouped_by_name
+        for item in path:
+            parent = _subgroup(parent, item)["properties"]
+        schema = dict(schema)
+        if path and "title" not in schema:
+            schema["title"] = leaf
+        existing = parent.get(leaf)
+        parent[leaf] = _declared(existing, schema) if existing is not None and _is_group(existing) else schema
     return grouped_by_name
 
 def group_apis_parameters(apis):
