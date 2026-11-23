@@ -31,13 +31,19 @@ def get_function_api_parameters_comments(fn):
     if docs is None: return []
     docast = numpydoc.docscrape.NumpyDocString(docs)
 
+    # A docstring's type is consulted only for a parameter with no annotation.
+    # An annotated parameter's type is its annotation, and the docstring's text
+    # would otherwise fill in what a union leaves out (a top-level "type").
+    annotated = {name for name, p in inspect.signature(fn).parameters.items()
+                 if p.annotation is not inspect.Parameter.empty}
+
     return {
          # propertyOrder will never be used, as merge() will prefer the one from inspect, included for completeness
         "propertyOrder": [p.name for p in docast["Parameters"]],
         "properties": {
             p.name: schema_utils.merge(
                 {"description": "\n".join(p.desc)},
-                type_schema.make_type_schema(p.type))
+                {} if p.name in annotated else type_schema.make_type_schema(p.type))
             for p in docast["Parameters"]}}
 
 def get_function_api(fn, name = None):
