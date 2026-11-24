@@ -1,6 +1,7 @@
 import importlib.metadata
 import typing
 
+import jsonschema
 import pytest
 
 import swaggerspect
@@ -197,6 +198,57 @@ def test_a_declared_group_is_flattened_back_on_validation():
     data = {"regularization": {"alpha_s": 1e-3, "L_r": 200.}, "other": 2}
     swaggerspect.validate.GroupMergingValidator(schema).validate(data)
     assert data == {"other": 2, "regularization__alpha_s": 1e-3, "regularization__L_r": 200.}
+
+
+# ── Validation of groups the data leaves out ─────────────────────────────────
+
+class TwoGroups:
+    directives__beta__cool = 2.0
+    directives__target__enable = True
+    directives__target__chifact = 1.0
+    other = 1
+
+
+def two_groups_schema(**extra):
+    return {"type": "object", "properties": grouped(TwoGroups), **extra}
+
+
+def merged(schema, data):
+    swaggerspect.validate.GroupMergingValidator(schema).validate(data)
+    return data
+
+
+def test_every_group_present_is_flattened():
+    data = {"directives": {"beta": {"cool": 3.0}, "target": {"enable": False, "chifact": 1.0}},
+            "other": 2}
+    assert merged(two_groups_schema(), data) == {
+        "other": 2, "directives__beta__cool": 3.0,
+        "directives__target__enable": False, "directives__target__chifact": 1.0}
+
+
+def test_a_group_left_out_is_skipped_and_the_others_flatten():
+    """Data written before a group existed: the function's defaults apply to it."""
+    data = {"directives": {"beta": {"cool": 3.0}}, "other": 2}
+    assert merged(two_groups_schema(), data) == {"other": 2, "directives__beta__cool": 3.0}
+    assert merged(two_groups_schema(), {"other": 2}) == {"other": 2}
+
+
+def test_a_required_group_left_out_is_still_an_error():
+    with pytest.raises(jsonschema.ValidationError):
+        merged(two_groups_schema(required=["directives"]), {"other": 2})
+
+
+def test_a_group_visited_twice_by_anyof_is_flattened_once():
+    """The first branch validates the group, then fails on its own constraint."""
+    schema = {"anyOf": [two_groups_schema(required=["not_given"]), two_groups_schema()]}
+    data = {"directives": {"beta": {"cool": 3.0}, "target": {"enable": False}}, "other": 2}
+    assert merged(schema, data) == {
+        "other": 2, "directives__beta__cool": 3.0, "directives__target__enable": False}
+
+
+def test_data_that_is_not_an_object_is_left_alone():
+    schema = {"anyOf": [two_groups_schema(), {"type": "string"}]}
+    assert merged(schema, "directives") == "directives"
 
 
 # ── Entry points ─────────────────────────────────────────────────────────────
